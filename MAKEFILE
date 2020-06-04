@@ -30,7 +30,8 @@ OBJS   = obj/mame.o obj/common.o obj/driver.o obj/osdepend.o \
          obj/machine/carnival.o obj/vidhrdw/carnival.o obj/drivers/carnival.o \
          obj/machine/invaders.o obj/vidhrdw/invaders.o obj/drivers/invaders.o \
          obj/vidhrdw/mario.o obj/drivers/mario.o \
-         obj/vidhrdw/zaxxon.o obj/drivers/zaxxon.o \
+         obj/machine/zaxxon.o obj/vidhrdw/zaxxon.o obj/drivers/zaxxon.o \
+         obj/vidhrdw/bombjack.o obj/drivers/bombjack.o \
          obj/Z80/Z80.o
 
 VPATH = src src/z80
