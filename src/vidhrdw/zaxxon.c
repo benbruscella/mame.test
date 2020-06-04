@@ -11,17 +11,17 @@
 
 #define VIDEO_RAM_SIZE 0x400
 
-unsigned char *amidar_videoram;
-unsigned char *amidar_attributesram;
-unsigned char *amidar_spriteram;
+
+unsigned char *zaxxon_videoram;
+unsigned char *zaxxon_colorram;
+unsigned char *zaxxon_spriteram;
 static unsigned char dirtybuffer[VIDEO_RAM_SIZE];	/* keep track of modified portions of the screen */
 											/* to speed up video refresh */
-
 static struct osd_bitmap *tmpbitmap;
 
 
 
-int amidar_vh_start(void)
+int zaxxon_vh_start(void)
 {
 	if ((tmpbitmap = osd_create_bitmap(Machine->drv->screen_width,Machine->drv->screen_height)) == 0)
 		return 1;
@@ -36,37 +36,33 @@ int amidar_vh_start(void)
   Stop the video hardware emulation.
 
 ***************************************************************************/
-void amidar_vh_stop(void)
+void zaxxon_vh_stop(void)
 {
 	osd_free_bitmap(tmpbitmap);
 }
 
 
 
-void amidar_videoram_w(int offset,int data)
+void zaxxon_videoram_w(int offset,int data)
 {
-	if (amidar_videoram[offset] != data)
+	if (zaxxon_videoram[offset] != data)
 	{
 		dirtybuffer[offset] = 1;
 
-		amidar_videoram[offset] = data;
+		zaxxon_videoram[offset] = data;
 	}
 }
 
 
 
-void amidar_attributes_w(int offset,int data)
+void zaxxon_colorram_w(int offset,int data)
 {
-	if ((offset & 1) && amidar_attributesram[offset] != data)
+	if (zaxxon_colorram[offset] != data)
 	{
-		int i;
+		dirtybuffer[offset] = 1;
 
-
-		for (i = offset / 2;i < VIDEO_RAM_SIZE;i += 32)
-			dirtybuffer[i] = 1;
+		zaxxon_colorram[offset] = data;
 	}
-
-	amidar_attributesram[offset] = data;
 }
 
 
@@ -78,9 +74,9 @@ void amidar_attributes_w(int offset,int data)
   the main emulation engine.
 
 ***************************************************************************/
-void amidar_vh_screenrefresh(struct osd_bitmap *bitmap)
+void zaxxon_vh_screenrefresh(struct osd_bitmap *bitmap)
 {
-	int offs;
+	int i,offs;
 
 
 	/* for every character in the Video RAM, check if it has been modified */
@@ -94,31 +90,33 @@ void amidar_vh_screenrefresh(struct osd_bitmap *bitmap)
 
 			dirtybuffer[offs] = 0;
 
-			sx = (31 - offs / 32);
-			sy = (offs % 32);
+			sx = 8 * (31 - offs / 32);
+			sy = 8 * (offs % 32);
 
 			drawgfx(tmpbitmap,Machine->gfx[0],
-					amidar_videoram[offs],
-					amidar_attributesram[2 * sy + 1],
-					0,0,8*sx,8*sy,
+					zaxxon_videoram[offs],
+0,//					zaxxon_colorram[offs],
+					0,0,
+					sx,sy,
 					&Machine->drv->visible_area,TRANSPARENCY_NONE,0);
 		}
 	}
 
 
-	/* copy the temporary bitmap to the screen */
+	/* copy the character mapped graphics */
 	copybitmap(bitmap,tmpbitmap,0,0,0,0,&Machine->drv->visible_area,TRANSPARENCY_NONE,0);
 
 
-	/* Draw the sprites. Note that it is important to draw them exactly in this */
-	/* order, to have the correct priorities. */
-	for (offs = 4*7;offs >= 0;offs -= 4)
+	/* Draw the sprites. */
+	for (i = 4*63;i >= 0;i -= 4)
 	{
-		drawgfx(bitmap,Machine->gfx[1],
-				amidar_spriteram[offs + 1] & 0x3f,
-				amidar_spriteram[offs + 2],
-				amidar_spriteram[offs + 1] & 0x80,amidar_spriteram[offs + 1] & 0x40,
-				amidar_spriteram[offs],amidar_spriteram[offs + 3],
-				&Machine->drv->visible_area,TRANSPARENCY_PEN,0);
+		if (zaxxon_spriteram[i])
+		{
+			drawgfx(bitmap,Machine->gfx[2],
+					zaxxon_spriteram[i+1] & 0x7f,zaxxon_spriteram[i+2] & 0x7f,
+					zaxxon_spriteram[i+1] & 0x80,zaxxon_spriteram[i+2] & 0x80,
+					zaxxon_spriteram[i] - 7,zaxxon_spriteram[i+3] - 8,
+					&Machine->drv->visible_area,TRANSPARENCY_PEN,0);
+		}
 	}
 }

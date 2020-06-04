@@ -13,14 +13,14 @@
 
 #define MAX_STARS 250
 
-unsigned char *scramble_videoram;
-unsigned char *scramble_attributesram;
-unsigned char *scramble_spriteram;
-unsigned char *scramble_bulletsram;
+unsigned char *moonqsr_videoram;
+unsigned char *moonqsr_attributesram;
+unsigned char *moonqsr_spriteram;
+unsigned char *moonqsr_bulletsram;
 static unsigned char dirtybuffer[VIDEO_RAM_SIZE];	/* keep track of modified portions of the screen */
 											/* to speed up video refresh */
 
-static int stars_on;
+static int stars_on,stars_scroll;
 
 struct star
 {
@@ -37,8 +37,8 @@ static struct osd_bitmap *tmpbitmap;
 
   Convert the color PROMs into a more useable format.
 
-  Scramble has one 32 bytes palette PROM, connected to the RGB output this
-  way:
+  Moon Cresta has one 32 bytes palette PROM, connected to the RGB output
+  this way:
 
   bit 7 -- 220 ohm resistor  -- BLUE
         -- 470 ohm resistor  -- BLUE
@@ -59,7 +59,7 @@ static struct osd_bitmap *tmpbitmap;
   bit 0 -- 150 ohm resistor  -- RED
 
 ***************************************************************************/
-void scramble_vh_convert_color_prom(unsigned char *palette, unsigned char *colortable,const unsigned char *color_prom)
+void moonqsr_vh_convert_color_prom(unsigned char *palette, unsigned char *colortable,const unsigned char *color_prom)
 {
 	int i;
 
@@ -112,7 +112,7 @@ void scramble_vh_convert_color_prom(unsigned char *palette, unsigned char *color
 
 
 
-int scramble_vh_start(void)
+int moonqsr_vh_start(void)
 {
 	int generator;
 	int x,y;
@@ -171,28 +171,28 @@ int scramble_vh_start(void)
   Stop the video hardware emulation.
 
 ***************************************************************************/
-void scramble_vh_stop(void)
+void moonqsr_vh_stop(void)
 {
 	osd_free_bitmap(tmpbitmap);
 }
 
 
 
-void scramble_videoram_w(int offset,int data)
+void moonqsr_videoram_w(int offset,int data)
 {
-	if (scramble_videoram[offset] != data)
+	if (moonqsr_videoram[offset] != data)
 	{
 		dirtybuffer[offset] = 1;
 
-		scramble_videoram[offset] = data;
+		moonqsr_videoram[offset] = data;
 	}
 }
 
 
 
-void scramble_attributes_w(int offset,int data)
+void moonqsr_attributes_w(int offset,int data)
 {
-	if ((offset & 1) && scramble_attributesram[offset] != data)
+	if ((offset & 1) && moonqsr_attributesram[offset] != data)
 	{
 		int i;
 
@@ -201,14 +201,15 @@ void scramble_attributes_w(int offset,int data)
 			dirtybuffer[i] = 1;
 	}
 
-	scramble_attributesram[offset] = data;
+	moonqsr_attributesram[offset] = data;
 }
 
 
 
-void scramble_stars_w(int offset,int data)
+void moonqsr_stars_w(int offset,int data)
 {
 	stars_on = (data & 1);
+	stars_scroll = 0;
 }
 
 
@@ -220,7 +221,7 @@ void scramble_stars_w(int offset,int data)
   the main emulation engine.
 
 ***************************************************************************/
-void scramble_vh_screenrefresh(struct osd_bitmap *bitmap)
+void moonqsr_vh_screenrefresh(struct osd_bitmap *bitmap)
 {
 	int i,offs;
 
@@ -240,8 +241,8 @@ void scramble_vh_screenrefresh(struct osd_bitmap *bitmap)
 			sy = (offs % 32);
 
 			drawgfx(tmpbitmap,Machine->gfx[0],
-					scramble_videoram[offs],
-					scramble_attributesram[2 * sy + 1],
+					moonqsr_videoram[offs] + 8 * (moonqsr_attributesram[2 * sy + 1] & 0x20),
+					moonqsr_attributesram[2 * sy + 1] & 0x07,
 					0,0,8*sx,8*sy,
 					0,TRANSPARENCY_NONE,0);
 		}
@@ -261,7 +262,7 @@ void scramble_vh_screenrefresh(struct osd_bitmap *bitmap)
 			int scroll;
 
 
-			scroll = scramble_attributesram[2 * (i / 8)];
+			scroll = moonqsr_attributesram[2 * (i / 8)];
 
 			clip.min_y = i;
 			clip.max_y = i + 7;
@@ -275,16 +276,29 @@ void scramble_vh_screenrefresh(struct osd_bitmap *bitmap)
 	for (offs = 0; offs < 4*8; offs += 4)
 	{
 		int x,y;
+		int color;
 
 
-		x = scramble_bulletsram[offs + 1];
+		if (offs == 4*7)
+			color = Machine->gfx[2]->colortable[0x0f];	/* yellow */
+		else color = Machine->gfx[2]->colortable[0x3f];	/* white */
+
+		x = moonqsr_bulletsram[offs + 1];
 
 		if (x >= Machine->drv->visible_area.min_x && x <= Machine->drv->visible_area.max_x)
 		{
-			y = 256 - scramble_bulletsram[offs + 3] - 8;
+			y = 256 - moonqsr_bulletsram[offs + 3] - 4;
 
 			if (y >= 0)
-				bitmap->line[y][x] = Machine->gfx[2]->colortable[0x0f];	/* yellow (?) */
+			{
+				int j;
+
+
+				for (j = 0; j < 3; j++)
+				{
+					bitmap->line[y+j][x] = color;
+				}
+			}
 		}
 	}
 
@@ -292,13 +306,13 @@ void scramble_vh_screenrefresh(struct osd_bitmap *bitmap)
 	/* Draw the sprites */
 	for (offs = 0;offs < 4*8;offs += 4)
 	{
-		if (scramble_spriteram[offs + 3] > 8)	/* ???? */
+		if (moonqsr_spriteram[offs + 3] > 8)	/* ???? */
 		{
 			drawgfx(bitmap,Machine->gfx[1],
-					scramble_spriteram[offs + 1] & 0x3f,
-					scramble_spriteram[offs + 2],
-					scramble_spriteram[offs + 1] & 0x80,scramble_spriteram[offs + 1] & 0x40,
-					scramble_spriteram[offs],scramble_spriteram[offs + 3],
+					(moonqsr_spriteram[offs + 1] & 0x3f) + 2 * (moonqsr_spriteram[offs + 2] & 0x20),
+					moonqsr_spriteram[offs + 2] & 0x07,
+					moonqsr_spriteram[offs + 1] & 0x80,moonqsr_spriteram[offs + 1] & 0x40,
+					moonqsr_spriteram[offs],moonqsr_spriteram[offs + 3],
 					&Machine->drv->visible_area,TRANSPARENCY_PEN,0);
 		}
 	}
@@ -317,11 +331,13 @@ void scramble_vh_screenrefresh(struct osd_bitmap *bitmap)
 
 
 			x = stars[offs].x;
-			y = stars[offs].y / 2;
+			y = (stars[offs].y + stars_scroll/2) % 256;
 
 			if (((x & 1) ^ ((y >> 4) & 1)) &&
 					(bitmap->line[y][x] == bpen))
 				bitmap->line[y][x] = stars[offs].col;
 		}
+
+		stars_scroll++;
 	}
 }

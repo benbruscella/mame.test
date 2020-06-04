@@ -6,38 +6,47 @@
 #include "driver.h"
 
 
-extern unsigned char *mooncrst_videoram;
-extern unsigned char *mooncrst_attributesram;
-extern unsigned char *mooncrst_spriteram;
-extern unsigned char *mooncrst_bulletsram;
-extern void mooncrst_vh_convert_color_prom(unsigned char *palette, unsigned char *colortable,const unsigned char *color_prom);
-extern void mooncrst_videoram_w(int offset,int data);
-extern void mooncrst_attributes_w(int offset,int data);
-extern void pisces_gfxbank_w(int offset,int data);
-extern int mooncrst_vh_start(void);
-extern void mooncrst_vh_stop(void);
-extern void mooncrst_vh_screenrefresh(struct osd_bitmap *bitmap);
+extern unsigned char *moonqsr_videoram;
+extern unsigned char *moonqsr_attributesram;
+extern unsigned char *moonqsr_spriteram;
+extern unsigned char *moonqsr_bulletsram;
+extern void moonqsr_vh_convert_color_prom(unsigned char *palette, unsigned char *colortable,const unsigned char *color_prom);
+extern void moonqsr_videoram_w(int offset,int data);
+extern void moonqsr_attributes_w(int offset,int data);
+extern void moonqsr_stars_w(int offset,int data);
+extern void moonqsr_gfxextend_w(int offset,int data);
+extern int moonqsr_vh_start(void);
+extern void moonqsr_vh_stop(void);
+extern void moonqsr_vh_screenrefresh(struct osd_bitmap *bitmap);
+
+extern void mooncrst_sound_freq_w(int offset,int data);
+extern int mooncrst_sh_start(void);
+extern void mooncrst_sh_update(void);
 
 
 
 static struct MemoryReadAddress readmem[] =
 {
-	{ 0x4000, 0x47ff, MRA_RAM },
-	{ 0x4800, 0x57ff, MRA_RAM },	/* video RAM, screen attributes, sprites, bullets */
+	{ 0x8000, 0x83ff, MRA_RAM },
+	{ 0x9000, 0x9fff, MRA_RAM },	/* video RAM, screen attributes, sprites, bullets */
 	{ 0x0000, 0x3fff, MRA_ROM },
-	{ 0x8100, 0x8100, input_port_0_r },	/* IN0 */
-	{ 0x8101, 0x8101, input_port_1_r },	/* IN1 */
-	{ 0x8102, 0x8102, input_port_2_r },	/* DSW */
+	{ 0xa000, 0xa000, input_port_0_r },	/* IN0 */
+	{ 0xa800, 0xa800, input_port_1_r },	/* IN1 */
+	{ 0xb000, 0xb000, input_port_2_r },	/* DSW (coins per play) */
+	{ 0xb800, 0xb800, MRA_NOP },
 	{ -1 }	/* end of table */
 };
 
 static struct MemoryWriteAddress writemem[] =
 {
-	{ 0x4000, 0x47ff, MWA_RAM },
-	{ 0x4800, 0x4bff, mooncrst_videoram_w, &mooncrst_videoram },
-	{ 0x5000, 0x503f, mooncrst_attributes_w, &mooncrst_attributesram },
-	{ 0x5040, 0x505f, MWA_RAM, &mooncrst_spriteram },
-	{ 0x5060, 0x5080, MWA_RAM, &mooncrst_bulletsram },
+	{ 0x8000, 0x83ff, MWA_RAM },
+	{ 0x9000, 0x93ff, moonqsr_videoram_w, &moonqsr_videoram },
+	{ 0x9800, 0x983f, moonqsr_attributes_w, &moonqsr_attributesram },
+	{ 0x9840, 0x985f, MWA_RAM, &moonqsr_spriteram },
+	{ 0x9860, 0x9880, MWA_RAM, &moonqsr_bulletsram },
+	{ 0xb000, 0xb000, interrupt_enable_w },
+	{ 0xb800, 0xb800, mooncrst_sound_freq_w },
+	{ 0xb004, 0xb004, moonqsr_stars_w },
 	{ 0x0000, 0x3fff, MWA_ROM },
 	{ -1 }	/* end of table */
 };
@@ -48,18 +57,18 @@ static struct InputPort input_ports[] =
 {
 	{	/* IN0 */
 		0x00,
-		{ 0, 0, OSD_KEY_3, OSD_KEY_CONTROL,
-				OSD_KEY_LEFT, OSD_KEY_RIGHT, 0, 0 },
-		{ 0, 0, 0, OSD_JOY_FIRE,
-				OSD_JOY_LEFT, OSD_JOY_RIGHT, 0, 0 }
+		{ OSD_KEY_3, 0, OSD_KEY_LEFT, OSD_KEY_RIGHT,
+				OSD_KEY_CONTROL, 0, 0, 0 },
+		{ 0, 0, OSD_JOY_LEFT, OSD_JOY_RIGHT,
+				OSD_JOY_FIRE, 0, 0, 0 }
 	},
 	{	/* IN1 */
 		0x80,
-		{ OSD_KEY_1, OSD_KEY_2, 0, 0, 0, 0, 0, OSD_KEY_1 },
+		{ OSD_KEY_1, OSD_KEY_2, 0, 0, 0, 0, 0, 0 },
 		{ 0, 0, 0, 0, 0, 0, 0, 0 }
 	},
 	{	/* DSW */
-		0x01,
+		0x00,
 		{ 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ 0, 0, 0, 0, 0, 0, 0, 0 }
 	},
@@ -70,14 +79,8 @@ static struct InputPort input_ports[] =
 
 static struct DSW dsw[] =
 {
-	{ 2, 0x01, "SW1", { "OFF", "ON" } },
-	{ 2, 0x02, "SW2", { "OFF", "ON" } },
-	{ 2, 0x04, "SW3", { "OFF", "ON" } },
-	{ 2, 0x08, "SW4", { "OFF", "ON" } },
-	{ 2, 0x10, "SW5", { "OFF", "ON" } },
-	{ 2, 0x20, "SW6", { "OFF", "ON" } },
-	{ 2, 0x40, "SW7", { "OFF", "ON" } },
-	{ 2, 0x80, "SW8", { "OFF", "ON" } },
+	{ 1, 0x80, "LANGUAGE", { "JAPANESE", "ENGLISH" } },
+	{ 1, 0x40, "SW1", { "OFF", "ON" } },
 	{ -1 }
 };
 
@@ -86,9 +89,9 @@ static struct DSW dsw[] =
 static struct GfxLayout charlayout =
 {
 	8,8,	/* 8*8 characters */
-	256,	/* 256 characters */
+	512,	/* 512 characters */
 	2,	/* 2 bits per pixel */
-	{ 0, 256*8*8 },	/* the two bitplanes are separated */
+	{ 0, 512*8*8 },	/* the two bitplanes are separated */
 	{ 7*8, 6*8, 5*8, 4*8, 3*8, 2*8, 1*8, 0*8 },
 	{ 0, 1, 2, 3, 4, 5, 6, 7 },
 	8*8	/* every char takes 8 consecutive bytes */
@@ -96,9 +99,9 @@ static struct GfxLayout charlayout =
 static struct GfxLayout spritelayout =
 {
 	16,16,	/* 16*16 sprites */
-	64,	/* 64 sprites */
+	128,	/* 128 sprites */
 	2,	/* 2 bits per pixel */
-	{ 0, 64*16*16 },	/* the two bitplanes are separated */
+	{ 0, 128*16*16 },	/* the two bitplanes are separated */
 	{ 23*8, 22*8, 21*8, 20*8, 19*8, 18*8, 17*8, 16*8,
 			7*8, 6*8, 5*8, 4*8, 3*8, 2*8, 1*8, 0*8 },
 	{ 0, 1, 2, 3, 4, 5, 6, 7,
@@ -133,26 +136,26 @@ static struct GfxDecodeInfo gfxdecodeinfo[] =
 static unsigned char palette[] =
 {
 	/* characters */
-    0*4, 0*4, 0*4,                    // TE1
-    20*4, 20*4, 20*4,                 // TE2
-    40*4, 40*4, 40*4,                 // TE3
-    58*4, 58*4, 58*4,                 // TE4
-    63*4, 63*4, 63*4,                 // TE5
-    10*4, 10*4, 20*4,                 // TE6
-    20*4, 20*4, 40*4,                 // TE7
-    0*4, 0*4, 63*4,                   // TE8
-    63*4, 0*4, 0*4,                   // TE9
-    0*4, 63*4, 0*4,                   // TEA
-    0*4, 20*4, 0*4,                   // TEB
-    0*4, 40*4, 0*4,                   // TEC
-    40*4, 63*4, 63*4,                 // TED
-    0*4, 0*4, 20*4,                   // TEE
-    0*4, 0*4, 40*4,                   // TEF
-    63*4, 20*4, 63*4,                 // TEG
-    63*4, 0*4, 63*4,                  // TEH
-	0,0,0,
-	0,0,0,
-	0,0,0,
+    0, 0, 0,                    // MC1
+    0, 0, 255,                  // MC2
+    255, 0, 0,                  // MC3
+    255, 255, 0,                // MC4
+    128, 0, 255,                // MC5
+    255, 128, 0,                // MC6
+    255, 0, 128,                // MC7
+    28*4, 20*4, 0,                  // MC8
+    0, 28*4, 20*4,                  // MC9
+    23*4, 30*4, 23*4,                 // MCA
+    0, 200, 128,                // MCB
+    200, 128, 200,              // MCC
+    128, 255, 128,              // MCD
+    200, 200, 64,               // MCE
+    255, 0, 200,                // MCF
+    200, 64, 255,               // MCG
+    200, 255, 0,                // MCH
+    0, 255, 200,                // MCI
+    255, 0, 255,                // MCJ
+    255, 255, 255,              // MCK
 	0,0,0,
 	0,0,0,
 	0,0,0,
@@ -233,19 +236,21 @@ static unsigned char palette[] =
 	0xff,0xff,0xff
 };
 
-enum { TE1,TE2,TE3,TE4,TE5,TE6,TE7,TE8,TE9,TEA,TEB,TEC,TED,TEE,TEF,TEG,TEH };
+enum
+{ MC1, MC2, MC3, MC4, MC5, MC6, MC7, MC8, MC9, MCA, MCB,
+		MCC, MCD, MCE, MCF, MCG, MCH, MCI, MCJ, MCK };
 
 static unsigned char colortable[] =
 {
 	/* characters */
-    TE1, TE2, TE3, TE5,         // white text
-    TE1, TE8, TE9, TEA,         //
-    TE1, TEB, TEC, TEA,         // green text
-    TE1, TE9, TE8, TED,         //
-    TE1, TEE, TEF, TE8,         // bluish text
-    TE1, TE6, TE7, TED,         //
-    TE1, TE8, TEG, TE4,         //
-    TE1, TE5, TEA, TEH,         // explosion
+    MC1, MC3, MCK, MC2,
+    MC1, MC2, MC3, MC4,
+    MC1, MC5, MC6, MC7,
+    MC1, MC8, MC9, MCA,
+    MC1, MCB, MCC, MCD,
+    MC1, MCE, MCF, MCG,
+    MC1, MC2, MC4, MC3,
+    MC1, MCH, MCI, MCK,
 
 	/* stars */
 	0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x2a,0x2b,0x2c,0x2d,0x2e,0x2f,
@@ -256,7 +261,16 @@ static unsigned char colortable[] =
 
 
 
-const struct MachineDriver theend_driver =
+/* waveforms for the audio hardware */
+static unsigned char samples[32] =	/* a simple sine (sort of) wave */
+{
+	0x00,0x00,0x00,0x00,0x22,0x22,0x22,0x22,0x44,0x44,0x44,0x44,0x22,0x22,0x22,0x22,
+	0x00,0x00,0x00,0x00,0xdd,0xdd,0xdd,0xdd,0xbb,0xbb,0xbb,0xbb,0xdd,0xdd,0xdd,0xdd
+};
+
+
+
+const struct MachineDriver moonqsr_driver =
 {
 	/* basic machine hardware */
 	3072000,	/* 3.072 Mhz */
@@ -271,18 +285,18 @@ const struct MachineDriver theend_driver =
 	gfxdecodeinfo,
 	sizeof(palette)/3,sizeof(colortable),
 	0,0,palette,colortable,
-	0,17,
-	0x00,0x01,
-	8*13,8*16,0x05,
+	0,10,
+	0x07,0x01,
+	8*13,8*16,0x06,
 	0,
-	mooncrst_vh_start,
-	mooncrst_vh_stop,
-	mooncrst_vh_screenrefresh,
+	moonqsr_vh_start,
+	moonqsr_vh_stop,
+	moonqsr_vh_screenrefresh,
 
 	/* sound hardware */
+	samples,
 	0,
+	mooncrst_sh_start,
 	0,
-	0,
-	0,
-	0
+	mooncrst_sh_update
 };
