@@ -105,23 +105,151 @@ void wow_videoram_w(int offset,int data)
 
 
 
+static void copywithflip(int offset,int data)
+{
+	if (unknown & 0x40)	/* copy backwards */
+	{
+		int bits,stib,k;
+
+		bits = data;
+		stib = 0;
+		for (k = 0;k < 4;k++)
+		{
+			stib >>= 2;
+			stib |= (bits & 0xc0);
+			bits <<= 2;
+		}
+
+		data = stib;
+	}
+
+	if (unknown & 0x40)	/* copy backwards */
+	{
+		int shift,data1,mask;
+
+
+		shift = unknown & 3;
+		data1 = 0;
+		mask = 0xff;
+		while (shift > 0)
+		{
+			data1 <<= 2;
+			data1 |= (data & 0xc0) >> 6;
+			data <<= 2;
+			mask <<= 2;
+			shift--;
+		}
+
+		if ((mask & wow_videoram[offset]) || (~mask & wow_videoram[offset-1])) collision = 1;
+		else collision = 0;
+
+		if (unknown & 0x20) data ^= wow_videoram[offset];	/* draw in XOR mode */
+		else data |= ~mask & wow_videoram[offset];	/* draw in copy mode */
+		wow_videoram_w(offset,data);
+		if (unknown & 0x20) data1 ^= wow_videoram[offset-1];	/* draw in XOR mode */
+		else data1 |= mask & wow_videoram[offset-1];	/* draw in copy mode */
+		wow_videoram_w(offset-1,data1);
+	}
+	else
+	{
+		int shift,data1,mask;
+
+
+		shift = unknown & 3;
+		data1 = 0;
+		mask = 0xff;
+		while (shift > 0)
+		{
+			data1 >>= 2;
+			data1 |= (data & 0x03) << 6;
+			data >>= 2;
+			mask >>= 2;
+			shift--;
+		}
+
+		if ((mask & wow_videoram[offset]) || (~mask & wow_videoram[offset+1])) collision = 1;
+		else collision = 0;
+
+		if (unknown & 0x20) data ^= wow_videoram[offset];	/* draw in XOR mode */
+		else data |= ~mask & wow_videoram[offset];	/* draw in copy mode */
+		wow_videoram_w(offset,data);
+		if (unknown & 0x20) data1 ^= wow_videoram[offset+1];	/* draw in XOR mode */
+		else data1 |= mask & wow_videoram[offset+1];	/* draw in copy mode */
+		wow_videoram_w(offset+1,data1);
+	}
+}
+
+
+
 void wow_masked_videoram_w(int offset,int data)
 {
 	if (offset < 0 || offset >= 0x4000) return;
 
-	if ((unknown & 0xf) == 8)
+	if ((unknown & 0x9c) == 0x08)	/* copy 1 bitplane with color */
 	{
-		if (mask == 0) data = 0;
-		else if (mask == 4) data &= 0x55;
-		else if (mask == 8) data &= 0xaa;
+		int bits,bibits,k;
+
+
+		bits = data;
+		bibits = 0;
+		for (k = 0;k < 4;k++)
+		{
+			bibits <<= 2;
+			if (bits & 0x80) bibits |= 0x03;
+			bits <<= 1;
+		}
+		if (mask == 0) bibits = 0;
+		else if (mask == 4) bibits &= 0x55;
+		else if (mask == 8) bibits &= 0xaa;
+
+		if (unknown & 0x40)	/* copy backwards */
+			copywithflip(offset+1,bibits);
+		else
+			copywithflip(offset,bibits);
+
+		bits = data;
+		bibits = 0;
+		for (k = 0;k < 4;k++)
+		{
+			bibits <<= 2;
+			if (bits & 0x08) bibits |= 0x03;
+			bits <<= 1;
+		}
+		if (mask == 0) bibits = 0;
+		else if (mask == 4) bibits &= 0x55;
+		else if (mask == 8) bibits &= 0xaa;
+
+		if (unknown & 0x40)	/* copy backwards */
+			copywithflip(offset,bibits);
+		else
+			copywithflip(offset+1,bibits);
 	}
+	else if ((unknown & 0x9c) == 0x18)	/* copy 1 bitplane with color, but copy only the first byte */
+	{
+		int bits,bibits,k;
 
-	if (unknown & 0x20) data ^= wow_videoram[offset];	/* draw in XOR mode */
 
-	if (wow_videoram[offset]) collision = 1;
-	else collision = 0;
+		bits = data;
+		bibits = 0;
+		for (k = 0;k < 4;k++)
+		{
+			bibits <<= 2;
+			if (bits & 0x80) bibits |= 0x03;
+			bits <<= 1;
+		}
+		if (mask == 0) bibits = 0;
+		else if (mask == 4) bibits &= 0x55;
+		else if (mask == 8) bibits &= 0xaa;
 
-	wow_videoram_w(offset,data);
+		if (unknown & 0x40)	/* copy backwards */
+			copywithflip(offset+1,bibits);
+		else
+			copywithflip(offset,bibits);
+	}
+	else
+	{
+		copywithflip(offset,data);
+	}
 }
 
 
@@ -152,8 +280,6 @@ void wow_blitter_w(int offset,int data)
 	static int loops;	/* rows to copy - 1 */
 
 
-//if (errorlog) fprintf(errorlog,"%04x: write %02x to I/O port %02x\n",Z80_GetPC(),data,offset+0x78);
-
 	switch (offset)
 	{
 		case 0:
@@ -163,7 +289,7 @@ void wow_blitter_w(int offset,int data)
 			src = src + data * 256;
 			break;
 		case 2:
-			mode = data;
+			mode = data & 0x3f;	/* register is 6 bit wide */
 			break;
 		case 3:
 			skip = data;
@@ -189,113 +315,45 @@ void wow_blitter_w(int offset,int data)
 if (errorlog) fprintf(errorlog,"%04x: blit src %04x mode %02x skip %d dest %04x length %d loops %d\n",
 		Z80_GetPC(),src,mode,skip,dest,length,loops);
 
-		if (mode == 0x22)	/* fill with mask */
-		{
-			for (i = 0; i <= loops;i++)
-			{
-				for (j = 0;j <= length;j++)
-				{
-					int bits,bibits,k;
-
-
-					bits = RAM[src];
-					if (j & 1)
-					{
-						bibits = 0;
-						for (k = 0;k < 4;k++)
-						{
-							bibits <<= 2;
-							if (bits & 0x08) bibits |= 0x03;
-							bits <<= 1;
-						}
-					}
-					else
-					{
-						bibits = 0;
-						for (k = 0;k < 4;k++)
-						{
-							bibits <<= 2;
-							if (bits & 0x80) bibits |= 0x03;
-							bits <<= 1;
-						}
-					}
-
-					wow_masked_videoram_w(dest + j,bibits);
-				}
-				dest += skip + length;
-			}
-		}
-		else if (mode == 0x26)	/* copy from 1 bitplane with mask */
-		{
-			for (i = 0; i <= loops;i++)
-			{
-				for (j = 0;j < 2*length;j++)
-				{
-					int bits,bibits,k;
-
-
-					bits = RAM[src+j/2];
-					if (j & 1)
-					{
-						bibits = 0;
-						for (k = 0;k < 4;k++)
-						{
-							bibits <<= 2;
-							if (bits & 0x08) bibits |= 0x03;
-							bits <<= 1;
-						}
-					}
-					else
-					{
-						bibits = 0;
-						for (k = 0;k < 4;k++)
-						{
-							bibits <<= 2;
-							if (bits & 0x80) bibits |= 0x03;
-							bits <<= 1;
-						}
-					}
-
-					wow_masked_videoram_w(dest + j,bibits);
-				}
-				dest += skip + length;
-				src += length;
-			}
-		}
-		else if (mode == 0x2c || mode == 0x3c)	/* copy from 2 bitplanes in XOR mode */
+		if ((mode & 0xdf) == 0x02)	/* fill */
 		{
 			for (i = 0; i <= loops;i++)
 			{
 				for (j = 0;j < length;j++)
 				{
-					wow_masked_videoram_w(dest + j,RAM[src+j]);
+					wow_masked_videoram_w(dest,RAM[src]);
+					if (mode & 0x20) dest++;	/* copy forwards */
+					else dest--;				/* backwards */
 				}
-				dest += skip + length;
-				src += length;
+				dest += skip;
 			}
 		}
-//		else if (mode == 0x16)	/* copy 1 bitplane backwards */
-		else if (mode == 0x0c || mode == 0x1c)	/* copy 2 bitplanes backwards in XOR mode */
+		else if ((mode & 0xdf) == 0x06)	/* copy from 1 bitplane */
 		{
 			for (i = 0; i <= loops;i++)
 			{
 				for (j = 0;j < length;j++)
 				{
-					int bits,stib,k;
-
-					bits = RAM[src+j];
-					stib = 0;
-					for (k = 0;k < 4;k++)
-					{
-						stib >>= 2;
-						stib |= (bits & 0xc0);
-						bits <<= 2;
-					}
-
-					wow_masked_videoram_w(dest - j,stib);
+					wow_masked_videoram_w(dest,RAM[src]);
+					if (mode & 0x20) dest++;	/* copy forwards */
+					else dest--;				/* backwards */
+					src++;
 				}
-				dest += skip - length;
-				src += length;
+				dest += skip;
+			}
+		}
+		else if ((mode & 0xdf) == 0x0c || (mode & 0xdf) == 0x1c)	/* copy from 2 bitplanes */
+		{
+			for (i = 0; i <= loops;i++)
+			{
+				for (j = 0;j < length;j++)
+				{
+					wow_masked_videoram_w(dest,RAM[src]);
+					if (mode & 0x20) dest++;	/* copy forwards */
+					else dest--;				/* backwards */
+					src++;
+				}
+				dest += skip;
 			}
 		}
 	}

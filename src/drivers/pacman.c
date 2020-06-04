@@ -303,7 +303,7 @@ static unsigned char samples[8*32] =
 const struct MachineDriver pacman_driver =
 {
 	/* basic machine hardware */
-	3072000,	/* 3.072 Mhz. Is this correct for Pac Man? */
+	3072000,	/* 3.072 Mhz */
 	60,
 	pacman_readmem,pacman_writemem,0,writeport,
 	input_ports,pacdsw,
@@ -336,7 +336,7 @@ const struct MachineDriver pacman_driver =
 const struct MachineDriver mspacman_driver =
 {
 	/* basic machine hardware */
-	3072000,	/* 3.072 Mhz. Is this correct for Pac Man? */
+	3072000,	/* 3.072 Mhz */
 	60,
 	mspacman_readmem,mspacman_writemem,0,0,
 	input_ports,mspacdsw,

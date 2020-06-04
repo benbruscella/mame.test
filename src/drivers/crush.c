@@ -300,7 +300,7 @@ static unsigned char samples[8*32] =
 const struct MachineDriver crush_driver =
 {
 	/* basic machine hardware */
-	3072000,	/* 3.072 Mhz. Is this correct for Crush Roller? */
+	3072000,	/* 3.072 Mhz */
 	60,
 	readmem,writemem,0,0,
 	input_ports,dsw,
